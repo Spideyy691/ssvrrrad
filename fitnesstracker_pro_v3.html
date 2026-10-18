@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FitnessTracker Pro V3</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a" id="meta-theme-color">
+    <link rel="manifest" href='data:application/manifest+json,{"name":"FitnessTracker Pro","short_name":"FitTrack","display":"standalone","background_color":"#0f172a","theme_color":"#10b981"}'>
+
+    <!-- Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Tailwind Config & Theming -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        bgMain: 'var(--bg-main)', bgCard: 'var(--bg-card)', bgInput: 'var(--bg-input)',
+                        textMain: 'var(--text-main)', textMuted: 'var(--text-muted)',
+                        accent: 'var(--accent)', accentHover: 'var(--accent-hover)', borderColor: 'var(--border-color)',
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root[data-theme="dark"] {
+            --bg-main: #0f172a; --bg-card: #1e293b; --bg-input: #334155;
+            --text-main: #f8fafc; --text-muted: #94a3b8;
+            --accent: #10b981; --accent-hover: #059669; --border-color: #334155;
+        }
+        :root[data-theme="light"] {
+            --bg-main: #f8fafc; --bg-card: #ffffff; --bg-input: #f1f5f9;
+            --text-main: #0f172a; --text-muted: #64748b;
+            --accent: #059669; --accent-hover: #047857; --border-color: #e2e8f0;
+        }
+
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: 'Inter', sans-serif; transition: background-color 0.3s ease; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        
+        .exporting .no-export { display: none !important; }
+        .exporting .export-only { display: block !important; }
+        .export-only { display: none; }
+        .exporting .day-card { page-break-inside: avoid; break-inside: avoid; }
+        .exporting input, .exporting textarea { border: none !important; background: transparent !important; resize: none; overflow: hidden; color: var(--text-main) !important; }
+        
+        .sortable-ghost { opacity: 0.4; border: 2px dashed var(--accent) !important; }
+        .sortable-drag { opacity: 1 !important; cursor: grabbing !important; }
+        
+        .is-superset { margin-top: -8px; border-top-left-radius: 0; border-top-right-radius: 0; border-left: 4px solid var(--accent); border-top: 1px dashed var(--border-color); }
+        .is-superset-prev { border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; border-bottom: none; }
+
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+        /* Custom Checkbox for Workout Mode */
+        .workout-checkbox input:checked + div { background-color: var(--accent); border-color: var(--accent); }
+        .workout-checkbox input:checked + div i { opacity: 1; transform: scale(1); }
+
+        /* Modals & Drawer Animations */
+        #bank-drawer { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .drawer-open { transform: translateX(0) !important; }
+        #timer-widget { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .timer-hidden { transform: translateY(150%); }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-screen overflow-hidden select-none md:select-auto">
+
+    <!-- Navigation Menu -->
+    <nav class="bg-bgCard border-t md:border-t-0 md:border-r border-borderColor w-full md:w-64 flex-shrink-0 flex md:flex-col justify-around md:justify-start p-2 md:p-6 fixed bottom-0 md:relative z-40 order-last md:order-first transition-colors">
+        <div class="hidden md:flex items-center gap-3 mb-10 px-2">
+            <i class="ph-fill ph-barbell text-4xl text-accent"></i>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight leading-tight">FitTrack</h1>
+                <span class="text-xs text-accent font-semibold tracking-widest uppercase">Pro V3</span>
+            </div>
+        </div>
+        
+        <div class="flex md:flex-col w-full gap-2 md:gap-4">
+            <button onclick="switchTab('programme')" id="nav-programme" class="nav-btn flex-1 md:flex-none flex flex-col md:flex-row items-center md:justify-start gap-1 md:gap-3 p-2 md:p-3 rounded-xl transition-all text-accent bg-accent/10 hover:bg-accent/20">
+                <i class="ph ph-calendar text-2xl"></i><span class="text-[10px] md:text-sm font-medium">Programme</span>
+            </button>
+            <button onclick="switchTab('journal')" id="nav-journal" class="nav-btn flex-1 md:flex-none flex flex-col md:flex-row items-center md:justify-start gap-1 md:gap-3 p-2 md:p-3 rounded-xl transition-all text-textMuted hover:bg-bgInput hover:text-textMain">
+                <i class="ph ph-book-open text-2xl"></i><span class="text-[10px] md:text-sm font-medium">Journal</span>
+            </button>
+            <button onclick="switchTab('outils')" id="nav-outils" class="nav-btn flex-1 md:flex-none flex flex-col md:flex-row items-center md:justify-start gap-1 md:gap-3 p-2 md:p-3 rounded-xl transition-all text-textMuted hover:bg-bgInput hover:text-textMain">
+                <i class="ph ph-wrench text-2xl"></i><span class="text-[10px] md:text-sm font-medium">Outils</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 h-full overflow-y-auto pb-20 md:pb-0 relative" id="export-container">
+        
+        <div class="export-only text-center py-8"><h1 class="text-3xl font-bold flex justify-center items-center gap-3"><i class="ph-fill ph-barbell text-accent"></i> Mon Programme</h1></div>
+
+        <!-- ================= TAB: PROGRAMME ================= -->
+        <section id="tab-programme" class="tab-content p-4 md:p-8 w-full max-w-[1800px] mx-auto hidden block">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 no-export">
+                <h2 class="text-2xl font-bold">Ma Semaine</h2>
+                <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <button onclick="toggleBankDrawer()" class="flex-1 sm:flex-none bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 hover:bg-indigo-500/20 px-4 py-2 rounded-lg transition-colors font-medium flex justify-center items-center gap-2">
+                        <i class="ph ph-list-dashes text-lg"></i> Ouvrir Banque
+                    </button>
+                    <button onclick="exportProgram('pdf')" class="flex-1 sm:flex-none bg-bgCard border border-borderColor hover:bg-bgInput px-4 py-2 rounded-lg transition-colors font-medium flex justify-center items-center gap-2" title="Exporter en PDF">
+                        <i class="ph ph-export text-lg"></i> <span class="hidden sm:inline">Export</span>
+                    </button>
+                    <button onclick="clearWeek()" class="bg-red-500/10 text-red-500 hover:bg-red-500/20 p-2 rounded-lg transition-colors" title="Vider la semaine"><i class="ph ph-trash text-lg"></i></button>
+                </div>
+            </div>
+
+            <div id="program-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                <!-- Days injected via JS -->
+            </div>
+        </section>
+
+        <!-- ================= TAB: JOURNAL ================= -->
+        <section id="tab-journal" class="tab-content p-4 md:p-8 w-full max-w-3xl mx-auto hidden">
+            <h2 class="text-2xl font-bold mb-6">Journal de Bord</h2>
+            <form id="form-journal" class="bg-bgCard p-5 rounded-xl border border-borderColor mb-8 flex flex-col gap-4 shadow-sm">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <label class="block text-xs font-medium text-textMuted mb-1">Date</label>
+                        <input type="date" id="journal-date" required class="w-full bg-bgInput border border-borderColor rounded-lg px-4 py-2 text-textMain">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-medium text-textMuted mb-1">Ressenti (RPE global)</label>
+                        <div class="flex items-center gap-2 h-[42px] px-2" id="journal-feeling">
+                            <i class="ph-fill ph-star text-2xl text-textMuted cursor-pointer hover:text-yellow-400" data-val="1"></i>
+                            <i class="ph-fill ph-star text-2xl text-textMuted cursor-pointer hover:text-yellow-400" data-val="2"></i>
+                            <i class="ph-fill ph-star text-2xl text-textMuted cursor-pointer hover:text-yellow-400" data-val="3"></i>
+                            <i class="ph-fill ph-star text-2xl text-textMuted cursor-pointer hover:text-yellow-400" data-val="4"></i>
+                            <i class="ph-fill ph-star text-2xl text-textMuted cursor-pointer hover:text-yellow-400" data-val="5"></i>
+                            <input type="hidden" id="journal-feeling-val" value="0">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-textMuted mb-1">Notes / Performances</label>
+                    <textarea id="journal-notes" required rows="3" class="w-full bg-bgInput border border-borderColor rounded-lg px-4 py-2 text-textMain" placeholder="Ex: Très bonne séance, validé les 100kg..."></textarea>
+                </div>
+                <div class="flex justify-end"><button type="submit" class="bg-accent hover:bg-accentHover text-white px-8 py-2 rounded-lg font-medium transition-colors">Enregistrer</button></div>
+            </form>
+            <div id="journal-list" class="flex flex-col gap-4"></div>
+        </section>
+
+        <!-- ================= TAB: OUTILS ================= -->
+        <section id="tab-outils" class="tab-content p-4 md:p-8 w-full max-w-5xl mx-auto hidden">
+            <h2 class="text-2xl font-bold mb-6">Outils & Statistiques</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Volume Heatmap -->
+                <div class="md:col-span-2 bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold flex items-center gap-2"><i class="ph-fill ph-chart-bar text-accent"></i> Volume Hebdomadaire (Heatmap)</h3>
+                        <button onclick="renderHeatmap()" class="text-xs bg-bgInput hover:bg-borderColor px-3 py-1 rounded transition-colors border border-borderColor"><i class="ph ph-arrows-clockwise"></i> Rafraîchir</button>
+                    </div>
+                    <p class="text-sm text-textMuted mb-6">Répartition de vos séries par groupe musculaire sur la semaine actuelle.</p>
+                    <div id="heatmap-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Heatmap injected via JS -->
+                    </div>
+                </div>
+
+                <!-- 1RM Calculator -->
+                <div class="bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                    <h3 class="text-lg font-bold mb-1 flex items-center gap-2"><i class="ph-fill ph-calculator text-accent"></i> Calculateur 1RM</h3>
+                    <p class="text-sm text-textMuted mb-4">Estimez votre charge maximale sur 1 répétition.</p>
+                    <div class="flex flex-wrap sm:flex-nowrap gap-2 mb-4">
+                        <input type="number" id="rm-weight" class="flex-1 min-w-0 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Poids (kg)">
+                        <input type="number" id="rm-reps" class="w-full sm:w-24 min-w-0 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Reps">
+                        <button onclick="calculate1RM()" class="w-full sm:w-auto bg-accent hover:bg-accentHover text-white px-4 py-2 rounded-lg font-medium transition-colors">Calculer</button>
+                    </div>
+                    <div id="rm-result" class="hidden bg-bgInput rounded-lg p-4 text-center border border-borderColor">
+                        <div class="text-sm text-textMuted uppercase tracking-wider mb-1">Votre 1RM Estimé</div>
+                        <div class="text-3xl font-bold text-accent mb-4" id="rm-max"></div>
+                        <div class="grid grid-cols-4 gap-2 text-xs" id="rm-percentages"></div>
+                    </div>
+                </div>
+
+                <!-- Plate Calculator -->
+                <div class="bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                    <h3 class="text-lg font-bold mb-1 flex items-center gap-2"><i class="ph-fill ph-disc text-accent"></i> Calculateur de Disques</h3>
+                    <p class="text-sm text-textMuted mb-4">Pour barre olympique 20kg</p>
+                    <div class="flex gap-2 mb-6">
+                        <input type="number" id="calc-weight" class="flex-1 min-w-0 bg-bgInput border border-borderColor rounded-lg px-4 py-2 text-textMain font-bold" placeholder="Poids total (ex: 105)">
+                        <button onclick="calculatePlates()" class="bg-bgInput hover:bg-borderColor border border-borderColor px-4 py-2 rounded-lg font-medium transition-colors">Calculer</button>
+                    </div>
+                    <div id="calc-result" class="hidden">
+                        <div class="text-center font-bold text-lg mb-2 text-accent" id="calc-side-weight"></div>
+                        <div class="flex justify-center items-end gap-1 h-24 border-b-4 border-slate-400 pb-1" id="calc-visual"></div>
+                        <p class="text-center text-xs text-textMuted mt-2" id="calc-text-breakdown"></p>
+                    </div>
+                </div>
+
+                <!-- IMC Calculator -->
+                <div class="bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                    <h3 class="text-lg font-bold mb-1 flex items-center gap-2"><i class="ph-fill ph-heartbeat text-accent"></i> Calculateur IMC</h3>
+                    <p class="text-sm text-textMuted mb-4">Indice de Masse Corporelle</p>
+                    <div class="flex flex-wrap sm:flex-nowrap gap-2 mb-4">
+                        <input type="number" id="imc-weight" class="flex-1 min-w-0 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Poids (kg)">
+                        <input type="number" id="imc-height" class="flex-1 min-w-0 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Taille (cm)">
+                        <button onclick="calculateIMC()" class="w-full sm:w-auto bg-accent hover:bg-accentHover text-white px-4 py-2 rounded-lg font-medium transition-colors">Calculer</button>
+                    </div>
+                    <div id="imc-result" class="hidden bg-bgInput rounded-lg p-4 text-center border border-borderColor">
+                        <div class="text-3xl font-bold mb-1" id="imc-value"></div>
+                        <div class="text-sm font-semibold" id="imc-status"></div>
+                    </div>
+                </div>
+
+                <!-- Steps Calorie Calculator -->
+                <div class="bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                    <h3 class="text-lg font-bold mb-1 flex items-center gap-2"><i class="ph-fill ph-sneaker text-accent"></i> Calories par Pas</h3>
+                    <p class="text-sm text-textMuted mb-4">Estimez la dépense de votre marche.</p>
+                    <div class="grid grid-cols-2 gap-2 mb-4">
+                        <input type="number" id="steps-count" class="col-span-2 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Nombre de pas (ex: 10000)">
+                        <input type="number" id="steps-weight" class="bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Poids (kg)">
+                        <input type="number" id="steps-height" class="bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Taille (cm)">
+                    </div>
+                    <button onclick="calculateSteps()" class="w-full bg-accent hover:bg-accentHover text-white px-4 py-2 rounded-lg font-medium transition-colors mb-4">Calculer</button>
+                    <div id="steps-result" class="hidden bg-bgInput rounded-lg p-4 text-center border border-borderColor">
+                        <div class="text-sm text-textMuted mb-1">Dépense estimée</div>
+                        <div class="text-3xl font-bold text-accent"><span id="steps-kcal"></span> <span class="text-lg font-normal text-textMuted">kcal</span></div>
+                        <div class="text-xs text-textMuted mt-2" id="steps-dist"></div>
+                    </div>
+                </div>
+
+                <!-- TDEE & BMR Calculator -->
+                <div class="bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm md:col-span-2">
+                    <h3 class="text-lg font-bold mb-1 flex items-center gap-2"><i class="ph-fill ph-fire text-accent"></i> Métabolisme & Dépense (TDEE)</h3>
+                    <p class="text-sm text-textMuted mb-4">Vos besoins caloriques journaliers estimés (Mifflin-St Jeor).</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                        <select id="tdee-gender" class="bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain"><option value="M">Homme</option><option value="F">Femme</option></select>
+                        <input type="number" id="tdee-age" class="bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Âge">
+                        <input type="number" id="tdee-weight" class="bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Poids (kg)">
+                        <input type="number" id="tdee-height" class="bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain" placeholder="Taille (cm)">
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+                        <select id="tdee-activity" class="flex-1 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-textMain text-sm">
+                            <option value="1.2">Sédentaire (Peu ou pas d'exercice)</option>
+                            <option value="1.375">Léger (Sport 1-3 fois/semaine)</option>
+                            <option value="1.55">Modéré (Sport 3-5 fois/semaine)</option>
+                            <option value="1.725">Actif (Sport 6-7 fois/semaine)</option>
+                            <option value="1.9">Très actif (Sport bi-quotidien/physique)</option>
+                        </select>
+                        <button onclick="calculateTDEE()" class="bg-accent hover:bg-accentHover text-white px-8 py-2 rounded-lg font-medium transition-colors">Calculer</button>
+                    </div>
+                    <div id="tdee-result" class="hidden flex flex-col sm:flex-row gap-4">
+                        <div class="flex-1 bg-bgInput rounded-lg p-4 text-center border border-borderColor">
+                            <div class="text-xs text-textMuted uppercase tracking-wider mb-1">Métabolisme de Base (BMR)</div>
+                            <div class="text-2xl font-bold text-textMain"><span id="tdee-bmr"></span> <span class="text-sm font-normal text-textMuted">kcal</span></div>
+                        </div>
+                        <div class="flex-1 bg-accent/10 border border-accent/30 rounded-lg p-4 text-center shadow-inner">
+                            <div class="text-xs text-accent uppercase tracking-wider mb-1 font-bold">Maintien (TDEE)</div>
+                            <div class="text-2xl font-bold text-accent"><span id="tdee-total"></span> <span class="text-sm font-normal">kcal/jour</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings & Data -->
+                <div class="md:col-span-2 flex flex-col sm:flex-row gap-6">
+                    <div class="flex-1 bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                        <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="ph-fill ph-palette text-accent"></i> Thème</h3>
+                        <div class="flex gap-4">
+                            <button onclick="setTheme('dark')" class="flex-1 py-2 rounded-lg border border-borderColor bg-[#0f172a] text-white hover:border-accent">Sombre</button>
+                            <button onclick="setTheme('light')" class="flex-1 py-2 rounded-lg border border-borderColor bg-[#f8fafc] text-slate-800 hover:border-accent">Clair</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 bg-bgCard p-6 rounded-xl border border-borderColor shadow-sm">
+                        <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="ph-fill ph-floppy-disk text-accent"></i> Données (Local)</h3>
+                        <div class="flex gap-4">
+                            <button onclick="exportDataJSON()" class="flex-1 bg-bgInput border border-borderColor py-2 rounded-lg hover:bg-borderColor flex items-center justify-center gap-2"><i class="ph ph-download-simple"></i> Exporter</button>
+                            <label class="flex-1 bg-accent hover:bg-accentHover text-white py-2 rounded-lg flex items-center justify-center gap-2 cursor-pointer">
+                                <i class="ph ph-upload-simple"></i> Importer <input type="file" class="hidden" accept=".json" onchange="importDataJSON(event)">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ================= BANK DRAWER ================= -->
+    <aside id="bank-drawer" class="fixed inset-y-0 right-0 w-full sm:w-96 bg-bgCard border-l border-borderColor shadow-2xl z-50 transform translate-x-full flex flex-col">
+        <div class="p-4 border-b border-borderColor flex justify-between items-center bg-bgInput/50">
+            <h2 class="text-xl font-bold flex items-center gap-2"><i class="ph ph-list-dashes text-accent"></i> Banque d'Exercices</h2>
+            <button onclick="toggleBankDrawer()" class="p-2 hover:bg-borderColor rounded-lg text-textMuted hover:text-textMain"><i class="ph ph-x text-xl"></i></button>
+        </div>
+        
+        <div class="p-4 border-b border-borderColor">
+            <form id="form-bank" class="flex flex-col gap-3">
+                <input type="text" id="bank-name" required class="w-full bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-sm" placeholder="Nouvel exercice...">
+                <div class="flex gap-2">
+                    <select id="bank-muscle" class="flex-1 bg-bgInput border border-borderColor rounded-lg px-3 py-2 text-sm">
+                        <option value="Pectoraux">Pectoraux</option><option value="Dos">Dos</option><option value="Jambes">Jambes</option>
+                        <option value="Épaules">Épaules</option><option value="Bras">Bras</option><option value="Abdos">Abdos</option><option value="Cardio">Cardio</option>
+                    </select>
+                    <button type="submit" class="bg-accent hover:bg-accentHover text-white px-4 py-2 rounded-lg"><i class="ph ph-plus"></i></button>
+                </div>
+            </form>
+        </div>
+
+        <div class="p-4 flex gap-2 overflow-x-auto no-scrollbar border-b border-borderColor bg-bgInput/30" id="muscle-filters"></div>
+        
+        <div class="flex-1 overflow-y-auto p-4 relative">
+            <div class="text-xs text-textMuted mb-4 italic text-center"><i class="ph ph-info"></i> Glissez les cartes vers la gauche dans vos journées !</div>
+            <div id="bank-list" class="flex flex-col gap-2 min-h-full pb-20">
+                <!-- Bank Items Injected -->
+            </div>
+        </div>
+    </aside>
+
+    <!-- Backdrop for Drawer -->
+    <div id="drawer-backdrop" onclick="toggleBankDrawer()" class="fixed inset-0 bg-black/50 z-40 hidden backdrop-blur-sm transition-opacity opacity-0"></div>
+
+    <!-- ================= WORKOUT MODAL (SÉANCE ACTIVE) ================= -->
+    <div id="workout-modal" class="fixed inset-0 bg-bgMain z-[60] flex flex-col hidden transform translate-y-full transition-transform duration-300">
+        <div class="bg-bgCard p-4 flex justify-between items-center border-b border-borderColor shadow-sm">
+            <div class="flex items-center gap-3">
+                <button onclick="closeWorkout()" class="text-textMuted hover:text-textMain mr-2" title="Quitter la séance"><i class="ph ph-x text-2xl"></i></button>
+                <div class="h-3 w-3 bg-red-500 rounded-full animate-pulse"></div>
+                <h2 class="text-xl font-bold" id="workout-title">Séance en cours</h2>
+            </div>
+            <button onclick="endWorkout()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"><i class="ph ph-check-circle"></i> Terminer</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 md:p-8 max-w-3xl w-full mx-auto" id="workout-content">
+            <!-- Active Workout UI injected -->
+        </div>
+    </div>
+
+    <!-- ================= FLOATING TIMER ================= -->
+    <div id="timer-widget" class="fixed bottom-24 md:bottom-8 right-4 md:right-8 bg-bgCard border-2 border-accent rounded-2xl shadow-2xl p-4 flex flex-col items-center timer-hidden z-[70] w-48 transition-transform">
+        <button onclick="closeTimer()" class="absolute top-2 right-2 text-textMuted hover:text-textMain"><i class="ph ph-x"></i></button>
+        <h4 class="text-xs font-bold text-textMuted uppercase tracking-wider mb-1"><i class="ph ph-clock text-accent"></i> Repos</h4>
+        <div id="timer-display" class="text-4xl font-bold text-textMain font-mono mb-3">00:00</div>
+        <div class="flex gap-2 w-full">
+            <button onclick="adjustTimer(-10)" class="flex-1 bg-bgInput rounded text-xs py-1 hover:bg-borderColor">-10s</button>
+            <button onclick="adjustTimer(10)" class="flex-1 bg-bgInput rounded text-xs py-1 hover:bg-borderColor">+10s</button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 -translate-y-20 opacity-0 transition-all duration-300 bg-bgCard border border-accent text-textMain px-6 py-3 rounded-full shadow-lg flex items-center gap-3 z-[80] pointer-events-none">
+        <i class="ph-fill ph-check-circle text-accent text-xl"></i><span id="toast-message" class="font-medium text-sm">Message</span>
+    </div>
+
+    <script>
+        /* ================= STATE & CONFIG ================= */
+        const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+        const MUSCLES = ['Tous', 'Pectoraux', 'Dos', 'Jambes', 'Épaules', 'Bras', 'Abdos', 'Cardio'];
+        
+        let state = {
+            theme: 'dark',
+            bank: [
+                { id: 'b1', name: 'Développé Couché', muscle: 'Pectoraux' },
+                { id: 'b2', name: 'Squat', muscle: 'Jambes' },
+                { id: 'b3', name: 'Traction', muscle: 'Dos' }
+            ],
+            program: {},
+            journal: []
+        };
+
+        DAYS.forEach(day => state.program[day] = { title: '', exercises: [] });
+
+        function loadState() {
+            const saved = localStorage.getItem('fitTrackProV3');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    state = { ...state, ...parsed };
+                    DAYS.forEach(day => { if (!state.program[day]) state.program[day] = { title: '', exercises: [] }; });
+                } catch (e) { console.error("Load Error", e); }
+            }
+            setTheme(state.theme);
+        }
+
+        function saveState() { localStorage.setItem('fitTrackProV3', JSON.stringify(state)); }
+        function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
+
+        let sortableDayInstances = [];
+        let sortableBankInstance = null;
+
+        window.onload = () => {
+            loadState();
+            setupJournalFeeling();
+            switchTab('programme');
+            document.getElementById('journal-date').valueAsDate = new Date();
+            renderBankFilters();
+            renderBank();
+        };
+
+        /* ================= NAVIGATION ================= */
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => { el.classList.add('hidden'); el.classList.remove('block'); });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden'); document.getElementById(`tab-${tabId}`).classList.add('block');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => { btn.classList.remove('text-accent', 'bg-accent/10'); btn.classList.add('text-textMuted'); });
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            activeBtn.classList.remove('text-textMuted'); activeBtn.classList.add('text-accent', 'bg-accent/10');
+
+            if (tabId === 'programme') renderProgram();
+            if (tabId === 'journal') renderJournal();
+            if (tabId === 'outils') renderHeatmap();
+        }
+
+        function toggleBankDrawer() {
+            const drawer = document.getElementById('bank-drawer');
+            const backdrop = document.getElementById('drawer-backdrop');
+            if (drawer.classList.contains('drawer-open')) {
+                drawer.classList.remove('drawer-open');
+                backdrop.classList.add('opacity-0'); setTimeout(() => backdrop.classList.add('hidden'), 300);
+            } else {
+                backdrop.classList.remove('hidden'); setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+                drawer.classList.add('drawer-open');
+            }
+        }
+
+        /* ================= PROGRAMME (DRAG & DROP) ================= */
+        function renderProgram() {
+            const grid = document.getElementById('program-grid');
+            grid.innerHTML = '';
+            sortableDayInstances.forEach(s => s.destroy());
+            sortableDayInstances = [];
+
+            DAYS.forEach(day => {
+                const dayData = state.program[day];
+                const col = document.createElement('div');
+                col.className = 'day-card bg-bgCard border border-borderColor rounded-xl flex flex-col overflow-hidden shadow-sm h-full';
+                
+                col.innerHTML = `
+                    <div class="bg-bgInput/50 border-b border-borderColor p-3 flex flex-col gap-2 relative">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[10px] uppercase tracking-wider font-bold text-accent">${day}</span>
+                            ${dayData.exercises.length > 0 ? `<button onclick="startWorkout('${day}')" class="no-export text-xs bg-accent hover:bg-accentHover text-white px-2 py-1 rounded flex items-center gap-1 transition-colors"><i class="ph-fill ph-play-circle"></i> Lancer</button>` : ''}
+                        </div>
+                        <input type="text" class="bg-transparent text-textMain font-bold text-lg focus:outline-none placeholder-textMuted" 
+                               placeholder="Nom (ex: Push)" value="${dayData.title}" onchange="updateDayTitle('${day}', this.value)" oninput="this.setAttribute('value', this.value)">
+                    </div>
+                    <div class="flex-1 p-2 flex flex-col gap-2 min-h-[120px] day-list bg-bgMain/20" data-day="${day}"></div>
+                    <div class="p-2 pt-0 no-export">
+                        <button onclick="addExerciseToDay('${day}')" class="w-full py-2 rounded-lg border-2 border-dashed border-borderColor/50 text-textMuted hover:text-accent hover:border-accent/50 transition-colors flex items-center justify-center gap-2 text-sm bg-bgInput/20"><i class="ph ph-plus"></i> Vide</button>
+                    </div>
+                `;
+
+                const listContainer = col.querySelector('.day-list');
+                dayData.exercises.forEach((ex, index) => listContainer.appendChild(createProgramExerciseCard(day, ex, index)));
+                grid.appendChild(col);
+
+                sortableDayInstances.push(new Sortable(listContainer, {
+                    group: { name: 'shared', pull: true, put: true },
+                    animation: 150, ghostClass: 'sortable-ghost', handle: '.drag-handle',
+                    onAdd: function (evt) {
+                        // Handled by SortableJS cloning from Bank
+                        if(evt.item.hasAttribute('data-bank-id')) {
+                            const bankId = evt.item.getAttribute('data-bank-id');
+                            const bankEx = state.bank.find(b => b.id === bankId);
+                            evt.item.remove(); // Remove raw DOM clone
+                            if(bankEx) insertBankExToDay(day, bankEx, evt.newIndex);
+                        } else { handleProgramReorder(evt); }
+                    },
+                    onUpdate: handleProgramReorder
+                }));
+            });
+        }
+
+        function createProgramExerciseCard(day, ex, index) {
+            const card = document.createElement('div');
+            let base = 'bg-bgInput rounded-lg p-2.5 relative group shadow-sm flex flex-col gap-2 border border-borderColor transition-all';
+            let superCls = ex.isSuperset ? ' is-superset' : '';
+            let prevSuperCls = (state.program[day].exercises[index+1]?.isSuperset) ? ' is-superset-prev' : '';
+            card.className = base + superCls + prevSuperCls;
+            card.dataset.id = ex.id; card.dataset.day = day;
+
+            card.innerHTML = `
+                <div class="flex justify-between items-start gap-2">
+                    <i class="ph ph-dots-six-vertical text-textMuted cursor-grab drag-handle no-export text-lg mt-0.5"></i>
+                    <div class="flex-1">
+                        <input type="text" class="font-bold text-sm bg-transparent border-b border-transparent focus:border-accent w-full text-textMain leading-tight" 
+                               value="${ex.name}" placeholder="Nom exercice" onchange="updateEx('${day}', '${ex.id}', 'name', this.value)" oninput="this.setAttribute('value', this.value)">
+                        <select class="text-[9px] text-accent uppercase tracking-wider font-semibold bg-transparent appearance-none cursor-pointer focus:outline-none w-auto inline-block mt-0.5" onchange="updateEx('${day}', '${ex.id}', 'muscle', this.value)">
+                            <option value="" disabled ${!ex.muscle ? 'selected' : ''}>+ Tag Muscle</option>
+                            ${['Pectoraux', 'Dos', 'Jambes', 'Épaules', 'Bras', 'Abdos', 'Cardio'].map(m => `<option value="${m}" ${ex.muscle === m ? 'selected' : ''}>${m}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1 no-export opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="toggleSuperset('${day}', '${ex.id}')" class="p-1 rounded hover:bg-bgCard ${ex.isSuperset ? 'text-accent' : 'text-textMuted'}" title="Superset"><i class="ph ph-link"></i></button>
+                        <button onclick="duplicateEx('${day}', '${ex.id}', ${index})" class="p-1 rounded hover:bg-bgCard text-blue-400" title="Dupliquer"><i class="ph ph-copy"></i></button>
+                        <button onclick="deleteEx('${day}', '${ex.id}')" class="p-1 rounded hover:bg-bgCard text-red-400" title="Supprimer"><i class="ph ph-trash"></i></button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5 text-xs">
+                    <div class="flex flex-col"><span class="text-[9px] text-textMuted uppercase mb-0.5">Séries</span><input type="number" class="bg-bgCard border border-borderColor rounded p-1 text-center" value="${ex.sets}" onchange="updateEx('${day}', '${ex.id}', 'sets', this.value)"></div>
+                    <div class="flex flex-col"><span class="text-[9px] text-textMuted uppercase mb-0.5">Reps</span><input type="text" class="bg-bgCard border border-borderColor rounded p-1 text-center" value="${ex.reps}" onchange="updateEx('${day}', '${ex.id}', 'reps', this.value)"></div>
+                    <div class="flex flex-col"><span class="text-[9px] text-textMuted uppercase mb-0.5">Poids</span><input type="text" class="bg-bgCard border border-borderColor rounded p-1 text-center text-accent font-semibold" value="${ex.weight}" onchange="updateEx('${day}', '${ex.id}', 'weight', this.value)"></div>
+                    <div class="flex flex-col"><span class="text-[9px] text-textMuted uppercase mb-0.5">Repos</span><input type="text" class="bg-bgCard border border-borderColor rounded p-1 text-center cursor-pointer hover:border-accent" value="${ex.rest}" onchange="updateEx('${day}', '${ex.id}', 'rest', this.value)" onclick="startTimer(this.value)"></div>
+                </div>
+            `;
+            return card;
+        }
+
+        // Program Actions
+        function updateDayTitle(day, title) { state.program[day].title = title; saveState(); }
+        function updateEx(day, id, field, value) { 
+            const ex = state.program[day].exercises.find(e => e.id === id); 
+            if(ex) { ex[field] = field==='sets' ? parseInt(value)||1 : value; saveState(); }
+        }
+        function addExerciseToDay(day) { insertBankExToDay(day, {name: '', muscle: ''}, state.program[day].exercises.length); }
+        function insertBankExToDay(day, bankEx, index) {
+            const newEx = { id: generateId(), name: bankEx.name, muscle: bankEx.muscle, sets: 4, reps: '8-12', weight: '', rest: '90', rpe: '', notes: '', isSuperset: false };
+            state.program[day].exercises.splice(index, 0, newEx);
+            saveState(); renderProgram();
+        }
+        function deleteEx(day, id) { state.program[day].exercises = state.program[day].exercises.filter(e => e.id !== id); saveState(); renderProgram(); }
+        function duplicateEx(day, id, index) {
+            const ex = state.program[day].exercises.find(e => e.id === id);
+            if(ex) { state.program[day].exercises.splice(index+1, 0, {...ex, id: generateId(), isSuperset: false}); saveState(); renderProgram(); }
+        }
+        function toggleSuperset(day, id) {
+            const exList = state.program[day].exercises; const i = exList.findIndex(e => e.id === id);
+            if(i > 0) { exList[i].isSuperset = !exList[i].isSuperset; saveState(); renderProgram(); }
+        }
+        function handleProgramReorder(evt) {
+            if(!evt.from.dataset.day || !evt.to.dataset.day) return;
+            const item = state.program[evt.from.dataset.day].exercises.splice(evt.oldIndex, 1)[0];
+            if (evt.newIndex === 0) item.isSuperset = false;
+            state.program[evt.to.dataset.day].exercises.splice(evt.newIndex, 0, item);
+            saveState(); renderProgram();
+        }
+        function clearWeek() { if(confirm("Vider la semaine ?")) { DAYS.forEach(d => state.program[d].exercises=[]); saveState(); renderProgram(); } }
+
+        /* ================= BANQUE (DRAWER) ================= */
+        let bankFilter = 'Tous';
+        function renderBankFilters() {
+            const c = document.getElementById('muscle-filters'); c.innerHTML = '';
+            MUSCLES.forEach(m => {
+                const b = document.createElement('button');
+                b.className = `px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${m===bankFilter ? 'bg-accent border-accent text-white' : 'bg-bgInput border-borderColor text-textMuted hover:text-textMain'}`;
+                b.innerText = m; b.onclick = () => { bankFilter = m; renderBankFilters(); renderBank(); };
+                c.appendChild(b);
+            });
+        }
+
+        function renderBank() {
+            const list = document.getElementById('bank-list'); list.innerHTML = '';
+            if(sortableBankInstance) sortableBankInstance.destroy();
+
+            const filtered = bankFilter === 'Tous' ? state.bank : state.bank.filter(b => b.muscle === bankFilter);
+            filtered.forEach(ex => {
+                const card = document.createElement('div');
+                card.className = 'bg-bgCard border border-borderColor rounded-lg p-3 flex justify-between items-center shadow-sm cursor-grab drag-handle';
+                card.dataset.bankId = ex.id; // Crucial for SortableJS cloning identification
+                card.innerHTML = `
+                    <div><div class="font-bold text-sm text-textMain">${ex.name}</div><div class="text-[10px] text-accent font-semibold uppercase tracking-wider mt-0.5">${ex.muscle}</div></div>
+                    <button onclick="deleteBankEx('${ex.id}')" class="text-textMuted hover:text-red-400 p-2 z-10"><i class="ph ph-trash"></i></button>
+                `;
+                list.appendChild(card);
+            });
+
+            sortableBankInstance = new Sortable(list, {
+                group: { name: 'shared', pull: 'clone', put: false },
+                animation: 150, sort: false, handle: '.drag-handle',
+            });
+        }
+
+        document.getElementById('form-bank').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const n = document.getElementById('bank-name').value, m = document.getElementById('bank-muscle').value;
+            state.bank.push({ id: generateId(), name: n, muscle: m }); saveState(); renderBank();
+            document.getElementById('bank-name').value = ''; showToast("Ajouté à la banque");
+        });
+        function deleteBankEx(id) { state.bank = state.bank.filter(b => b.id !== id); saveState(); renderBank(); }
+
+        /* ================= MODE SÉANCE ACTIVE (WORKOUT) ================= */
+        let activeWorkoutDay = null;
+        
+        function startWorkout(day) {
+            activeWorkoutDay = day;
+            const modal = document.getElementById('workout-modal');
+            const content = document.getElementById('workout-content');
+            document.getElementById('workout-title').innerText = `${day} - ${state.program[day].title || 'Séance'}`;
+            content.innerHTML = '';
+
+            state.program[day].exercises.forEach((ex, exIndex) => {
+                const card = document.createElement('div');
+                card.className = `bg-bgCard border ${ex.isSuperset ? 'border-l-4 border-accent border-t-0 rounded-t-none -mt-4' : 'border-borderColor mt-4'} rounded-xl p-5 shadow-lg`;
+                
+                let setsHTML = '';
+                for(let i=1; i<= (ex.sets||4); i++) {
+                    setsHTML += `
+                        <label class="workout-checkbox flex flex-col items-center gap-2 cursor-pointer group">
+                            <span class="text-[10px] font-bold text-textMuted group-hover:text-textMain">S${i}</span>
+                            <input type="checkbox" class="hidden" onchange="handleSetCheck(this, '${ex.rest}')">
+                            <div class="w-10 h-10 rounded-xl border-2 border-borderColor bg-bgInput flex items-center justify-center transition-all group-hover:border-accent">
+                                <i class="ph-bold ph-check text-white text-xl opacity-0 transform scale-50 transition-all"></i>
+                            </div>
+                        </label>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-textMain">${ex.name}</h3>
+                            <div class="flex gap-3 text-sm text-textMuted mt-1 font-medium">
+                                <span class="flex items-center gap-1"><i class="ph-fill ph-arrows-clockwise text-accent"></i> ${ex.sets}x${ex.reps}</span>
+                                <span class="flex items-center gap-1"><i class="ph-fill ph-barbell text-accent"></i> ${ex.weight||'--'} kg</span>
+                            </div>
+                        </div>
+                        <button onclick="startTimer('${ex.rest}')" class="bg-bgInput hover:bg-borderColor text-accent px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 border border-borderColor"><i class="ph-fill ph-timer"></i> ${ex.rest}</button>
+                    </div>
+                    <div class="flex flex-wrap gap-4 pt-4 border-t border-borderColor">${setsHTML}</div>
+                `;
+                content.appendChild(card);
+            });
+
+            modal.classList.remove('hidden');
+            // Allow display block to render before translating
+            setTimeout(() => { modal.classList.remove('translate-y-full'); }, 10);
+        }
+
+        function handleSetCheck(checkbox, restTime) {
+            if(checkbox.checked) startTimer(restTime);
+        }
+
+        function endWorkout() {
+            if(confirm("Terminer la séance ? Le résumé sera envoyé dans le journal.")) {
+                const modal = document.getElementById('workout-modal');
+                modal.classList.add('translate-y-full');
+                
+                // Pre-fill journal
+                const dayData = state.program[activeWorkoutDay];
+                let notes = `Séance validée : ${activeWorkoutDay} - ${dayData.title || 'Workout'}\nExercices : ${dayData.exercises.map(e => e.name).join(', ')}`;
+                document.getElementById('journal-notes').value = notes;
+                
+                setTimeout(() => { 
+                    modal.classList.add('hidden'); 
+                    switchTab('journal'); 
+                    showToast("Résumé prêt ! Notez votre ressenti."); 
+                }, 300);
+            }
+        }
+
+        function closeWorkout() {
+            const modal = document.getElementById('workout-modal');
+            modal.classList.add('translate-y-full');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+
+        /* ================= FLOATING TIMER ================= */
+        let timerInt; let timerSec = 0;
+        function startTimer(restStr) {
+            let sec = 90;
+            if (restStr) {
+                const s = restStr.toLowerCase().trim();
+                if (s.includes('m') || s.includes(':')) { const p = s.split(/[m:]/); sec = (parseInt(p[0])||0)*60 + (parseInt(p[1])||0); } 
+                else if (!isNaN(parseInt(s))) { sec = parseInt(s); }
+            }
+            timerSec = sec; updateTimerDisp();
+            document.getElementById('timer-widget').classList.remove('timer-hidden');
+            clearInterval(timerInt);
+            timerInt = setInterval(() => {
+                timerSec--; updateTimerDisp();
+                if (timerSec <= 0) {
+                    clearInterval(timerInt); timerSec = 0; updateTimerDisp();
+                    const w = document.getElementById('timer-widget');
+                    w.classList.add('animate-pulse', 'border-red-500');
+                    setTimeout(() => w.classList.remove('animate-pulse', 'border-red-500'), 3000);
+                }
+            }, 1000);
+        }
+        function updateTimerDisp() {
+            const m = Math.floor(timerSec/60).toString().padStart(2,'0'), s = (timerSec%60).toString().padStart(2,'0');
+            document.getElementById('timer-display').innerText = `${m}:${s}`;
+        }
+        function adjustTimer(amt) { timerSec = Math.max(0, timerSec+amt); updateTimerDisp(); }
+        function closeTimer() { clearInterval(timerInt); document.getElementById('timer-widget').classList.add('timer-hidden'); }
+
+        /* ================= OUTILS & STATS ================= */
+        
+        // Volume Heatmap
+        function renderHeatmap() {
+            const cont = document.getElementById('heatmap-container'); cont.innerHTML = '';
+            let volume = { 'Pectoraux':0, 'Dos':0, 'Jambes':0, 'Épaules':0, 'Bras':0, 'Abdos':0 };
+            
+            DAYS.forEach(d => {
+                state.program[d].exercises.forEach(ex => {
+                    if(ex.muscle && volume[ex.muscle] !== undefined) volume[ex.muscle] += (parseInt(ex.sets)||0);
+                });
+            });
+
+            for(const [m, sets] of Object.entries(volume)) {
+                let status = "Faible", color = "text-textMuted", barColor = "bg-bgInput";
+                if(sets >= 6 && sets <= 15) { status = "Optimal"; color = "text-accent"; barColor = "bg-accent"; }
+                else if(sets > 15) { status = "Élevé"; color = "text-red-500"; barColor = "bg-red-500"; }
+                
+                const percent = Math.min((sets/20)*100, 100); // Base 20 sets max for visual scale
+                
+                cont.innerHTML += `
+                    <div class="bg-bgInput/50 border border-borderColor rounded-lg p-4">
+                        <div class="flex justify-between items-end mb-2">
+                            <span class="font-bold text-textMain">${m}</span>
+                            <span class="text-xs font-semibold ${color}">${sets} séries</span>
+                        </div>
+                        <div class="h-2 w-full bg-bgCard rounded-full overflow-hidden mb-1 border border-borderColor">
+                            <div class="h-full ${barColor} transition-all duration-1000" style="width: ${percent}%"></div>
+                        </div>
+                        <div class="text-[10px] text-right uppercase tracking-wider ${color}">${status}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // 1RM Calculator (Epley Formula)
+        function calculate1RM() {
+            const w = parseFloat(document.getElementById('rm-weight').value);
+            const r = parseInt(document.getElementById('rm-reps').value);
+            if(!w || !r || r < 1) return showToast("Valeurs invalides");
+            
+            const rm = r === 1 ? w : Math.round(w * (1 + 0.0333 * r));
+            document.getElementById('rm-result').classList.remove('hidden');
+            document.getElementById('rm-max').innerText = `${rm} kg`;
+            
+            const percs = [95, 90, 85, 80, 75, 70, 60, 50];
+            let pHTML = '';
+            percs.forEach(p => { pHTML += `<div class="bg-bgCard p-1 rounded border border-borderColor"><span class="text-textMuted block text-[9px]">${p}%</span><span class="font-bold text-textMain">${Math.round(rm*(p/100))}</span></div>`; });
+            document.getElementById('rm-percentages').innerHTML = pHTML;
+        }
+
+        // Plate Calculator
+        function calculatePlates() {
+            const tw = parseFloat(document.getElementById('calc-weight').value);
+            if (isNaN(tw) || tw < 20) return showToast("Min 20kg (Barre)");
+            const ps = (tw - 20) / 2;
+            let rem = ps; const needed = [];
+            [25, 20, 15, 10, 5, 2.5, 1.25].forEach(p => { while(rem >= p) { needed.push(p); rem = parseFloat((rem-p).toFixed(2)); } });
+            
+            document.getElementById('calc-result').classList.remove('hidden');
+            document.getElementById('calc-side-weight').innerText = `${ps} kg par côté`;
+            
+            const cm = { 25:'#ef4444', 20:'#3b82f6', 15:'#eab308', 10:'#22c55e', 5:'#f8fafc', 2.5:'#000000', 1.25:'#94a3b8' };
+            const hm = { 25:'90%', 20:'90%', 15:'75%', 10:'60%', 5:'40%', 2.5:'30%', 1.25:'25%' };
+            const wm = { 25:'w-6', 20:'w-5', 15:'w-5', 10:'w-4', 5:'w-3', 2.5:'w-2', 1.25:'w-1.5' };
+            
+            let v = `<div class="h-full w-8 bg-slate-400 rounded-l-sm self-end relative z-0"></div>`, txt = [];
+            needed.forEach(p => { v += `<div class="${wm[p]} rounded-sm z-10 border border-slate-900" style="height: ${hm[p]}; background-color: ${cm[p]}"></div>`; txt.push(`${p}kg`); });
+            
+            document.getElementById('calc-visual').innerHTML = v;
+            document.getElementById('calc-text-breakdown').innerText = txt.join(' + ') || "Aucun disque";
+        }
+
+        // IMC Calculator
+        function calculateIMC() {
+            const w = parseFloat(document.getElementById('imc-weight').value);
+            const h = parseFloat(document.getElementById('imc-height').value) / 100;
+            if(!w || !h) return showToast("Valeurs invalides");
+            const imc = (w / (h * h)).toFixed(1);
+            let status = "", color = "";
+            if(imc < 18.5) { status = "Insuffisance pondérale"; color = "text-yellow-500"; }
+            else if(imc < 25) { status = "Corpulence normale"; color = "text-accent"; }
+            else if(imc < 30) { status = "Surpoids"; color = "text-orange-500"; }
+            else { status = "Obésité"; color = "text-red-500"; }
+            
+            document.getElementById('imc-result').classList.remove('hidden');
+            document.getElementById('imc-value').innerText = imc;
+            document.getElementById('imc-value').className = `text-3xl font-bold mb-1 ${color}`;
+            document.getElementById('imc-status').innerText = status;
+            document.getElementById('imc-status').className = `text-sm font-semibold ${color}`;
+        }
+
+        // TDEE Calculator
+        function calculateTDEE() {
+            const g = document.getElementById('tdee-gender').value;
+            const a = parseInt(document.getElementById('tdee-age').value);
+            const w = parseFloat(document.getElementById('tdee-weight').value);
+            const h = parseFloat(document.getElementById('tdee-height').value);
+            const act = parseFloat(document.getElementById('tdee-activity').value);
+            
+            if(!a || !w || !h) return showToast("Veuillez remplir tous les champs");
+            
+            let bmr = (10 * w) + (6.25 * h) - (5 * a);
+            bmr += (g === 'M') ? 5 : -161; // Mifflin-St Jeor Equation
+            const tdee = bmr * act;
+            
+            document.getElementById('tdee-result').classList.remove('hidden');
+            document.getElementById('tdee-bmr').innerText = Math.round(bmr);
+            document.getElementById('tdee-total').innerText = Math.round(tdee);
+        }
+
+        // Steps Calculator
+        function calculateSteps() {
+            const steps = parseInt(document.getElementById('steps-count').value);
+            const w = parseFloat(document.getElementById('steps-weight').value);
+            const h = parseFloat(document.getElementById('steps-height').value);
+            
+            if(!steps || !w || !h) return showToast("Valeurs invalides");
+            
+            // Stride length estimation (roughly 41.4% of height)
+            const strideMeters = (h * 0.414) / 100;
+            const distanceKm = (steps * strideMeters) / 1000;
+            
+            // Calories burned = distance(km) * weight(kg) * 1.036
+            const kcal = distanceKm * w * 1.036;
+            
+            document.getElementById('steps-result').classList.remove('hidden');
+            document.getElementById('steps-kcal').innerText = Math.round(kcal);
+            document.getElementById('steps-dist').innerText = `Distance : ~${distanceKm.toFixed(2)} km`;
+        }
+
+        /* ================= JOURNAL & EXPORT/IMPORT ================= */
+        function setupJournalFeeling() {
+            const stars = document.querySelectorAll('#journal-feeling i'), hid = document.getElementById('journal-feeling-val');
+            stars.forEach(star => star.addEventListener('click', () => {
+                const val = parseInt(star.dataset.val); hid.value = val;
+                stars.forEach(s => { s.classList.replace('ph-fill', 'ph'); s.classList.remove('text-yellow-400'); s.classList.add('text-textMuted'); });
+                for(let i=0; i<val; i++) { stars[i].classList.replace('ph', 'ph-fill'); stars[i].classList.add('text-yellow-400'); stars[i].classList.remove('text-textMuted'); }
+            }));
+        }
+
+        document.getElementById('form-journal').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const date = document.getElementById('journal-date').value, feeling = parseInt(document.getElementById('journal-feeling-val').value), notes = document.getElementById('journal-notes').value;
+            if (feeling === 0) return showToast("Sélectionnez un ressenti (étoiles)");
+            state.journal.unshift({ id: generateId(), date, feeling, notes }); saveState(); renderJournal();
+            document.getElementById('journal-notes').value = ''; showToast("Journal enregistré");
+        });
+
+        function renderJournal() {
+            const list = document.getElementById('journal-list'); list.innerHTML = '';
+            if(state.journal.length === 0) return list.innerHTML = `<div class="text-center text-textMuted py-8">Aucune note.</div>`;
+            state.journal.forEach(entry => {
+                const d = new Date(entry.date).toLocaleDateString('fr-FR', { weekday:'short', day:'numeric', month:'short' });
+                let s = ''; for(let i=0; i<5; i++) s += i<entry.feeling ? `<i class="ph-fill ph-star text-yellow-400"></i>` : `<i class="ph ph-star text-textMuted"></i>`;
+                list.innerHTML += `<div class="bg-bgCard border border-borderColor rounded-xl p-4 shadow-sm relative"><button onclick="deleteJournal('${entry.id}')" class="absolute top-4 right-4 text-textMuted hover:text-red-400"><i class="ph ph-trash"></i></button><div class="flex items-center gap-3 mb-2"><span class="bg-bgInput text-accent font-bold px-2 py-1 rounded text-xs uppercase">${d}</span><div class="flex">${s}</div></div><p class="text-sm">${entry.notes}</p></div>`;
+            });
+        }
+        function deleteJournal(id) { state.journal = state.journal.filter(j => j.id !== id); saveState(); renderJournal(); }
+
+        function setTheme(t) { state.theme = t; document.documentElement.setAttribute('data-theme', t); document.getElementById('meta-theme-color').setAttribute('content', t==='dark'?'#0f172a':'#f8fafc'); saveState(); }
+        function exportDataJSON() { const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state)); a.download = "FitTrack_Backup.json"; a.click(); }
+        function importDataJSON(e) {
+            const reader = new FileReader();
+            reader.onload = (ev) => { try { const p = JSON.parse(ev.target.result); if(p.program) { state = p; saveState(); loadState(); switchTab('programme'); showToast("Restauré !"); } } catch(err) { showToast("Erreur Fichier"); } };
+            if(e.target.files[0]) reader.readAsText(e.target.files[0]);
+        }
+
+        async function exportProgram() {
+            showToast("Génération PDF..."); const cont = document.getElementById('export-container'); const grid = document.getElementById('program-grid');
+            cont.classList.add('exporting'); const origCls = grid.className; grid.className = "grid grid-cols-4 gap-4 pb-10";
+            await new Promise(r => setTimeout(r, 300));
+            try {
+                const canvas = await html2canvas(cont, { scale: 2, backgroundColor: state.theme === 'dark' ? '#0f172a' : '#ffffff', windowWidth: 1600 });
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf; const pdf = new jsPDF('l', 'mm', 'a4'); 
+                pdf.addImage(imgData, 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), (canvas.height * pdf.internal.pageSize.getWidth()) / canvas.width);
+                pdf.save('FitTrack_Programme.pdf'); showToast("PDF Téléchargé !");
+            } catch(e) { showToast("Erreur Export"); }
+            grid.className = origCls; cont.classList.remove('exporting');
+        }
+
+        function showToast(m) { const t = document.getElementById('toast'); document.getElementById('toast-message').innerText = m; t.classList.remove('-translate-y-20', 'opacity-0'); setTimeout(() => t.classList.add('-translate-y-20', 'opacity-0'), 3000); }
+    </script>
+</body>
+</html>
